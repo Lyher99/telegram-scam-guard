@@ -1,0 +1,11 @@
+data/
+__pycache__/
+*.pyc
+.env
+*.xlsx
+.venv/
+venv/
+*.log
+translate.log
+screenlog.*
+.DS_Store
