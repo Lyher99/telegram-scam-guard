@@ -1,4 +1,5 @@
 import os
+import re
 import logging
 
 from telegram import Update
@@ -7,15 +8,47 @@ from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, fil
 from bot.report import format_report
 from bot.predict import predict_ensemble
 from bot.hash_lookup import check_hash
+from src.features import money_lure, has_keyword
 
 logging.basicConfig(format="%(asctime)s - %(name)s - %(levelname)s - %(message)s", level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 BOT_USERNAME = None
 
+GROUP_KM_KEYWORDS = [
+    "ផ្ញើ", "សងវិញ", "លុយ", "ប្រាក់", "ឆ្នោត", "ឈ្នះ", "រង្វាន់", "ឥតគិតថ្លៃ",
+    "វិនិយោគ", "ចំណេញ", "ធានា", "គណនី", "ធនាគារ", "ពាក្យសម្ងាត់", "កូដ",
+    "ប្រាក់ខែ", "ការងារ", "វិក័យប័ត្រ", "OTP", "otp", "scam", "ក្លែងក្លាយ",
+]
+
+
+async def safe_reply(message, text, **kwargs):
+    """Send a reply, retrying as plain text if Telegram rejects the formatting."""
+    try:
+        return await message.reply_text(text, **kwargs)
+    except Exception as e:
+        logger.error(f"reply_text failed ({e}); retrying without parse_mode")
+        try:
+            plain = re.sub(r"[*_`\[\]#", "", text)
+            return await message.reply_text(plain)
+        except Exception as e2:
+            logger.error(f"retry reply_text failed: {e2}")
+            return None
+
+
+async def error_handler(update, context):
+    logger.error(f"Update {update} caused error", exc_info=context.error)
+
 
 def is_group(update: Update) -> bool:
     return update.message.chat.type in ("group", "supergroup")
+
+
+def should_reply_scanned(update: Update, result: dict) -> bool:
+    """Private chats always get an answer; groups only when the risk is real."""
+    if not is_group(update):
+        return True
+    return result["risk_level"] == "dangerous" or result["score"] >= 40
 
 
 def should_respond(update: Update) -> bool:
@@ -48,7 +81,7 @@ def should_respond(update: Update) -> bool:
             "final notice", "shut off", "disconnection", "unpaid", "overdue",
             "suspended", "blocked", "closed", "unauthorized", "compromised",
             "grandma", "grandpa", "accident", "trouble", "hospital",
-            "zelle", "venmo", "wire transfer", "send \$", "pay now",
+            "zelle", "venmo", "wire transfer", "send $", "pay now",
             "fake", "scam", "phishing", "malware", "virus",
             "recover", "hacked", "hack", "gift card", "qr code",
             "six digits", "verification message", "follow my instructions",
@@ -65,8 +98,13 @@ def should_respond(update: Update) -> bool:
             ".code", "send code", "send the code",
             "ផ្ញើលុយ", "ផ្ញើប្រាក់", "គណនី", "ធនាគារ", "ពាក្យសម្ងាត់",
         ]
-        text_lower = msg.text.lower()
-        if any(kw in text_lower for kw in suspicious_keywords):
+        if has_keyword(msg.text, suspicious_keywords):
+            return True
+
+        if money_lure(msg.text):
+            return True
+
+        if any(kw in msg.text for kw in GROUP_KM_KEYWORDS) and any(c.isdigit() for c in msg.text):
             return True
 
     return False
@@ -185,6 +223,7 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     if is_group(update) and not should_respond(update):
+        logger.info(f"Group ignored ({update.message.chat.id}): {text[:60]!r}")
         return
 
     clean_text = text
@@ -206,15 +245,17 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 report += f"🔗 `{url[:60]}...`\n"
                 report += f"• ឱកាសជា phishing: {prob:.0f}%\n\n"
                 report += f"💡 **កុំចុច Link នេះ!**"
-                await update.message.reply_text(report, parse_mode="Markdown")
+                await safe_reply(update.message, report, parse_mode="Markdown")
                 url_dangerous = True
 
         text_result = predict_ensemble(clean_text)
-        if text_result["risk_level"] != "safe":
+        logger.info(f"URL scan risk={text_result['risk_level']} score={text_result['score']} urls={len(urls)}")
+        if text_result["risk_level"] != "safe" and should_reply_scanned(update, text_result):
             report = format_report(text_result)
-            await update.message.reply_text(report)
-        elif not url_dangerous:
-            await update.message.reply_text(
+            await safe_reply(update.message, report)
+        elif not url_dangerous and not is_group(update):
+            await safe_reply(
+                update.message,
                 f"✅ **Link មានសុវត្ថិភាព**\n\n🔗 `{urls[0][:60]}`",
                 parse_mode="Markdown"
             )
@@ -222,15 +263,24 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     result = predict_ensemble(clean_text)
     ml = result.get("ml_predictions", {})
+    logger.info(
+        f"Text scan risk={result['risk_level']} score={result['score']} "
+        f"kw={ml.get('keyword_score')} ml={ml.get('ml_score')} text={clean_text[:80]!r}"
+    )
+
+    if is_group(update) and not should_reply_scanned(update, result):
+        logger.info(f"Group suppressed (score={result['score']}): {clean_text[:60]!r}")
+        return
 
     report = format_report(result)
 
     ml_info = "\n\n🤖 **ការវិភាគ ML:**\n"
-    ml_info += f"• Rule: {ml.get('rule', '-')}\n"
-    ml_info += f"• Text LR: {ml.get('text_lr', '-')}\n"
-    ml_info += f"• Text SVM: {ml.get('text_svm', '-')}"
+    ml_info += f"• Rule score: {ml.get('rule_score', '-')}%\n"
+    ml_info += f"• Keyword score: {ml.get('keyword_score', '-')}%\n"
+    ml_info += f"• ML score: {ml.get('ml_score', '-')}%\n"
+    ml_info += f"• Prediction: {ml.get('ml_prediction', '-')}"
 
-    await update.message.reply_text(report + ml_info, parse_mode="Markdown")
+    await safe_reply(update.message, report + ml_info, parse_mode="Markdown")
 
 
 async def handle_document(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -361,6 +411,7 @@ def main():
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_text))
     app.add_handler(MessageHandler(filters.Document.ALL, handle_document))
     app.add_handler(MessageHandler(filters.PHOTO, handle_photo))
+    app.add_error_handler(error_handler)
 
     logger.info("Bot starting...")
     app.run_polling()

@@ -138,6 +138,21 @@ check("special chars only", r["risk_level"] == "safe", f"got {r['risk_level']}")
 r = predict_ensemble("https://www.southbankmosaics.com")
 check("ensemble: known safe URL from PhiUSIIL", r["risk_level"] == "safe", f"got {r['risk_level']}")
 
+# ─── 7. Money Lure Regression ─────────────────────────────────
+print("\n=== 7. Money Lure ===")
+
+r = predict_ensemble("ផ្ញើ $20 មក ខ្ញុំនឹងសង $200")
+check("khmer send-small / get-big lure", r["risk_level"] == "dangerous", f"got {r['risk_level']}")
+
+r = predict_ensemble("Send $50 now and get $500 back tomorrow")
+check("english send/get ratio lure", r["risk_level"] in ("suspicious", "dangerous"), f"got {r['risk_level']}")
+
+r = predict_ensemble("Please call me back when free")
+check("benign 'when free' stays safe", r["risk_level"] == "safe", f"got {r['risk_level']}")
+
+r = predict_ensemble("My salary is 1,500 USD per month")
+check("salary statement stays safe", r["risk_level"] == "safe", f"got {r['risk_level']}")
+
 # ─── Summary ──────────────────────────────────────────────────
 total = PASS + FAIL
 print(f"\n{'='*50}")

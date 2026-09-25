@@ -1,3 +1,5 @@
+import re
+
 RISK_LABELS = {
     "safe": {"en": "Safe", "km": "មានសុវត្ថិភាព", "icon": "✅"},
     "suspicious": {"en": "Suspicious", "km": "គួរឱ្យសង្ស័យ", "icon": "⚠️"},
@@ -24,6 +26,18 @@ REASON_TRANSLATIONS = {
     "Money or prize bait detected": {
         "en": "💰 Mentions money, prize, or lottery",
         "km": "💰 និយាយពីលុយ, រង្វាន់, ឬឆ្នោត",
+    },
+    "Money amount lure (send small amount, promised much larger return)": {
+        "en": "💸 Asks you to send a small amount, promises a much bigger return",
+        "km": "💸 សុំផ្ញើលុយតិច ប៉ុន្តែសន្យាថានឹងសងវិញច្រើនដង",
+    },
+    "Money lure combined with bait wording": {
+        "en": "💸 Money lure combined with bait wording (free/prize/invest)",
+        "km": "💸 ល្បួងលុយរួមជាមួយពាក្យល្បួង (ឥតគិតថ្លៃ/រង្វាន់/វិនិយោគ)",
+    },
+    "Money amount lure detected (send small, promised much larger return)": {
+        "en": "💸 Send a small amount, promised much larger return",
+        "km": "💸 ផ្ញើលុយតិច ប៉ុន្តែសន្យាថានឹងសងវិញច្រើនដង",
     },
     "Job offer bait detected": {
         "en": "💼 Job offer or salary promise",
@@ -70,7 +84,11 @@ def format_report(result):
 
     translated_reasons = []
     for r in reasons:
-        if r in REASON_TRANSLATIONS:
+        if r.startswith("ML model detected scam"):
+            m = re.search(r"(\d+)%", r)
+            conf = m.group(1) if m else "?"
+            translated_reasons.append(f"🤖 ម៉ូឌែល ML រកឃើញថាជាការក្លែងបន្លំ ({conf}%)")
+        elif r in REASON_TRANSLATIONS:
             translated_reasons.append(REASON_TRANSLATIONS[r]["km"])
         else:
             translated_reasons.append(f"• {r}")
@@ -78,20 +96,20 @@ def format_report(result):
     reason_text = "\n".join(translated_reasons) if translated_reasons else "• មិនរកឃើញហានិភ័យច្បាស់លាស់"
 
     if risk == "safe":
-        header = f"{icon} **មានសុវត្ថិភាព**"
+        header = f"{icon} **មានសុវត្ថិភាព (Safe)**"
         advice = (
             "✅ សារនេះមានលក្ខណៈធម្មតា។\n"
             "ប៉ុន្តែសូមប្រុងប្រយ័ត្នជានិច្ចចំពោះតំណភ្ជាប់ និងឯកសារពីអ្នកដែលអ្នកមិនស្គាល់។"
         )
     elif risk == "suspicious":
-        header = f"{icon} **គួរឱ្យសង្ស័យ ({score}%)**"
+        header = f"{icon} **គួរឱ្យសង្ស័យ (Suspicious) — {score}%**"
         advice = (
             "⚠️ សារនេះគួរឱ្យសង្ស័យ!\n"
             "កុំចុចតំណភ្ជាប់ ឬបើកឯកសារ។\n"
             "សូមផ្ទៀងផ្ទាត់ជាមួយអ្នកផ្ញើតាមប្រព័ន្ធផ្សេង។"
         )
     else:
-        header = f"{icon} **គ្រោះថ្នាក់ ({score}%)**"
+        header = f"{icon} **គ្រោះថ្នាក់ (Dangerous) — {score}%**"
         advice = (
             "🚫 សារនេះគ្រោះថ្នាក់!\n"
             "កុំបើកឯកសារ ឬចុចតំណភ្ជាប់!\n"
@@ -100,6 +118,7 @@ def format_report(result):
 
     report = f"""{header}
 
+📋 **មូលហេតុ / Reasons:**
 {reason_text}
 
 💡 **អនុសាសន៍:**

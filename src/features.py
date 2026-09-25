@@ -1,6 +1,6 @@
 import re
 
-EXECUTABLE_EXTS = {"exe", "scr", "bat", "cmd", "com", "msi", "js", "vbs", "jar", "apk", "lnk", "ps1", "hta", "pif", "dll", "reg", "sh"}
+EXECUTABLE_EXTS = {"exe", "scr", "bat", "cmd", "msi", "js", "vbs", "jar", "apk", "lnk", "ps1", "hta", "pif", "dll", "reg", "sh"}
 DOCUMENT_EXTS = {"pdf", "doc", "docx", "xls", "xlsx", "ppt", "pptx", "jpg", "jpeg", "png", "gif", "txt", "mp4", "mp3", "csv", "rtf"}
 ARCHIVE_EXTS = {"zip", "rar", "7z", "iso", "img", "tar", "gz"}
 
@@ -28,10 +28,70 @@ PAYMENT_SCAM_EN = ["payment failed", "new payment link", "cancel it", "cancelled
 FAMILY_SCAM_EN = ["grandma", "grandpa", "grandmother", "grandfather", "accident", "trouble", "hospital", "arrested", "jail", "emergency", "help me", "don't tell", "don't call", "send money", "wire money"]
 FAMILY_SCAM_KM = ["ជួយខ្ញុំ", "គ្រោះថ្នាក់", "មន្ទីរពេទ្យ", "ឃុំឃាំង", "កុំប្រាប់", "កុំទូរស័ព្ទ"]
 
+SEND_MONEY_KM = ["ផ្ញើ", "បង់", "ផ្ទេរ", "ដាក់ប្រាក់", "ដាក់លុយ", "ផ្ញើលុយ", "ផ្ញើប្រាក់", "ផ្ញើមក", "បញ្ចូលលុយ"]
+SEND_MONEY_EN = ["send", "pay", "transfer", "deposit", "wire", "put in"]
+RETURN_MONEY_KM = ["សង", "ទទួល", "បាន", "ចំណេញ", "កើន", "នឹងបាន", "សងវិញ", "សងមកវិញ"]
+RETURN_MONEY_EN = ["get back", "receive", "return", "will get", "you get", "back", "recovered", "earn", "profit", "double", "repay"]
 
-def _has_keyword(text, keywords):
+_CURRENCY = r"(?:\$|usd\b|dollars?\b|riel\b|៛|ដុល្លារ|រៀល|baht\b|บาท|thb\b)"
+_AMT = r"(\d[\d,]*(?:\.\d+)?)(?:\s*(k|m|ដុល្លារ|dollar|dollars|riel|រៀល|ribbu|ពាន់|មួយរយ))?"
+_CURRENCY_AMOUNT_RE = re.compile(rf"{_CURRENCY}\s*{_AMT}|{_AMT}\s*{_CURRENCY}", re.IGNORECASE)
+_ANY_AMOUNT_RE = re.compile(r"\d[\d,]*(?:\.\d+)?")
+
+
+def _parse_amount(raw):
+    try:
+        return float(raw.replace(",", ""))
+    except (ValueError, AttributeError):
+        return None
+
+
+def currency_amounts(text):
+    """Amounts that sit next to a currency marker ($20, 20$, ៛100, 100 រៀល...)."""
+    amounts = []
+    for m in _CURRENCY_AMOUNT_RE.finditer(text):
+        raw = m.group(1) or m.group(2)
+        val = _parse_amount(raw)
+        if val is not None:
+            amounts.append(val)
+    return amounts
+
+
+def money_lure(text):
+    """Small amount in, much bigger amount out (send $20 -> get $200)."""
+    amounts = currency_amounts(text)
+    if len(amounts) >= 2:
+        lo, hi = min(amounts), max(amounts)
+        if lo > 0 and hi >= lo * 3:
+            return True
+
     text_lower = text.lower()
-    return any(kw in text_lower for kw in keywords)
+    has_send = any(kw in text_lower for kw in SEND_MONEY_EN + SEND_MONEY_KM)
+    has_return = any(kw in text_lower for kw in RETURN_MONEY_EN + RETURN_MONEY_KM)
+    if has_send and has_return:
+        numbers = [_parse_amount(a) for a in _ANY_AMOUNT_RE.findall(text)]
+        numbers = [n for n in numbers if n]
+        if len(numbers) >= 2:
+            lo, hi = min(numbers), max(numbers)
+            if lo > 0 and hi >= lo * 3:
+                return True
+    return False
+
+
+def has_keyword(text, keywords):
+    """Match keywords: ASCII keywords need word boundaries, Khmer uses substring."""
+    text_lower = text.lower()
+    for kw in keywords:
+        kw = kw.lower()
+        if kw.isascii() and any(c.isalpha() for c in kw):
+            if re.search(rf"(?<![a-z0-9]){re.escape(kw)}(?![a-z0-9])", text_lower):
+                return True
+        elif kw in text_lower:
+            return True
+    return False
+
+
+_has_keyword = has_keyword
 
 
 def _extract_urls(text):
@@ -64,6 +124,8 @@ def extract_features(text):
         "family_scam": _has_keyword(text, FAMILY_SCAM_EN + FAMILY_SCAM_KM),
         "has_link": len(urls) > 0,
         "n_links": len(urls),
+        "money_lure": money_lure(text),
+        "currency_amounts": currency_amounts(text),
         "has_file": file_name is not None,
         "file_name": file_name,
         "ext_exec": file_ext in EXECUTABLE_EXTS if file_ext else False,
@@ -104,6 +166,13 @@ def rule_baseline(features):
     if features["money_bait"]:
         reasons.append("Money or prize bait detected")
         score += 15
+
+    if features.get("money_lure"):
+        reasons.append("Money amount lure (send small amount, promised much larger return)")
+        score += 35
+        if features["money_bait"]:
+            reasons.append("Money lure combined with bait wording")
+            score += 10
 
     if features["job_bait"]:
         reasons.append("Job offer bait detected")

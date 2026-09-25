@@ -1,16 +1,34 @@
 import os
 import re
+import logging
 import pickle
 import numpy as np
 from scipy.sparse import hstack, csr_matrix
 from src.features import (
-    extract_features, analyze_message,
+    extract_features, analyze_message, money_lure, has_keyword,
     URGENCY_EN, URGENCY_KM, MONEY_BAIT_EN, MONEY_BAIT_KM,
     CREDENTIAL_ASK, PAYMENT_SCAM_EN, FAMILY_SCAM_EN, FAMILY_SCAM_KM,
 )
 
 MODEL_DIR = os.path.join(os.path.dirname(__file__), "..", "data", "processed")
 _hybrid_model = None
+
+logger = logging.getLogger(__name__)
+
+_KW_REASON_ALIAS = {
+    "Urgency language detected": "Message uses urgency language",
+    "Money amount lure detected (send small, promised much larger return)":
+        "Money amount lure (send small amount, promised much larger return)",
+}
+
+_KW_REASON_WEIGHT = {
+    "Urgency language detected": 15,
+    "Money or prize bait detected": 15,
+    "Asks for login credentials or OTP": 25,
+    "Payment scam pattern detected": 25,
+    "Family emergency scam pattern detected": 25,
+    "Money amount lure detected (send small, promised much larger return)": 30,
+}
 
 
 def _load_hybrid_model():
@@ -21,6 +39,34 @@ def _load_hybrid_model():
             with open(path, "rb") as f:
                 _hybrid_model = pickle.load(f)
     return _hybrid_model
+
+
+_TFIDF_MODELS = {}
+_TFIDF_LABELS = {0: "safe", 1: "suspicious", 2: "dangerous"}
+
+
+def _load_tfidf_model(name):
+    if name not in _TFIDF_MODELS:
+        path = os.path.join(MODEL_DIR, f"{name}.pkl")
+        if not os.path.exists(path):
+            return None
+        with open(path, "rb") as f:
+            _TFIDF_MODELS[name] = pickle.load(f)
+    return _TFIDF_MODELS[name]
+
+
+def predict_tfidf(text, model_name):
+    """Standalone TF-IDF model prediction: 'safe' | 'suspicious' | 'dangerous'."""
+    model = _load_tfidf_model(model_name)
+    if not model:
+        return "unknown"
+    try:
+        X = model["vectorizer"].transform([text])
+        pred = int(model["model"].predict(X)[0])
+        return _TFIDF_LABELS.get(pred, "unknown")
+    except Exception as e:
+        logger.warning(f"predict_tfidf({model_name}) failed: {e}")
+        return "unknown"
 
 
 def _get_keyword_features(text):
@@ -42,24 +88,26 @@ def _get_keyword_features(text):
 
 
 def _extract_keyword_reasons(text):
-    text_lower = text.lower()
     reasons = []
-    if any(w in text_lower for w in URGENCY_EN + URGENCY_KM):
+    if has_keyword(text, URGENCY_EN + URGENCY_KM):
         reasons.append("Urgency language detected")
-    if any(w in text_lower for w in MONEY_BAIT_EN + MONEY_BAIT_KM):
+    if has_keyword(text, MONEY_BAIT_EN + MONEY_BAIT_KM):
         reasons.append("Money or prize bait detected")
-    if any(w in text_lower for w in CREDENTIAL_ASK):
+    if has_keyword(text, CREDENTIAL_ASK):
         reasons.append("Asks for login credentials or OTP")
-    if any(w in text_lower for w in PAYMENT_SCAM_EN):
+    if has_keyword(text, PAYMENT_SCAM_EN):
         reasons.append("Payment scam pattern detected")
-    if any(w in text_lower for w in FAMILY_SCAM_EN + FAMILY_SCAM_KM):
+    if has_keyword(text, FAMILY_SCAM_EN + FAMILY_SCAM_KM):
         reasons.append("Family emergency scam pattern detected")
+    if money_lure(text):
+        reasons.append("Money amount lure detected (send small, promised much larger return)")
     return reasons
 
 
 def predict_ensemble(text):
     features = extract_features(text)
     kw_reasons = _extract_keyword_reasons(text)
+    rule = analyze_message(text)
     model = _load_hybrid_model()
 
     ml_score = 0
@@ -84,19 +132,23 @@ def predict_ensemble(text):
             ml_score = int(lr_prob * 100)
             ml_pred = "scam" if lr_pred == 1 else "safe"
             ml_confidence = int(lr_prob * 100)
-        except Exception:
-            pass
+        except Exception as e:
+            logger.warning(f"ML scoring failed: {e}")
 
-    kw_score = len(kw_reasons) * 25
+    kw_score = sum(_KW_REASON_WEIGHT.get(r, 25) for r in kw_reasons)
+    has_signal = kw_score >= 25 or rule["score"] >= 15
 
-    if kw_score >= 50:
-        final_score = max(kw_score, ml_score + 20)
-    elif kw_score >= 25:
-        final_score = max(kw_score, ml_score + 10)
-    elif ml_score >= 70:
-        final_score = ml_score
-    else:
+    if not has_signal:
         final_score = 0
+    elif kw_score >= 45:
+        final_score = max(kw_score, ml_score + 20, rule["score"])
+    elif kw_score >= 25:
+        final_score = max(kw_score, ml_score + 10, rule["score"])
+    else:
+        final_score = max(rule["score"], ml_score if ml_score >= 70 else 0)
+
+    if rule["risk_level"] == "dangerous" and final_score < 60:
+        final_score = 60
 
     if final_score >= 60:
         risk_level = "dangerous"
@@ -105,8 +157,12 @@ def predict_ensemble(text):
     else:
         risk_level = "safe"
 
-    all_reasons = list(kw_reasons)
-    if features.get("ext_exec"):
+    all_reasons = list(rule["reasons"])
+    for r in kw_reasons:
+        alias = _KW_REASON_ALIAS.get(r, r)
+        if r not in all_reasons and alias not in all_reasons:
+            all_reasons.append(r)
+    if features.get("ext_exec") and not any("executable" in r for r in all_reasons):
         all_reasons.append("File has an executable extension")
     if ml_pred == "scam" and ml_confidence > 70:
         all_reasons.append(f"ML model detected scam ({ml_confidence}% confidence)")
@@ -121,6 +177,7 @@ def predict_ensemble(text):
         "ml_predictions": {
             "keyword_score": kw_score,
             "ml_score": ml_score,
+            "rule_score": rule["score"],
             "ml_prediction": ml_pred,
             "ml_confidence": ml_confidence,
             "keyword_reasons": kw_reasons,
