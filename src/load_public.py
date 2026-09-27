@@ -1,3 +1,14 @@
+"""
+Public Dataset Loader Utilities
+================================
+Flow & Operations:
+Provides standardized loader functions for raw public datasets:
+- PhiUSIIL URL dataset
+- URLhaus malicious URLs
+- PhishTank verified phishing feeds
+Standardizes columns to ['text', 'label', 'source_dataset', 'language', 'type'].
+"""
+
 import os
 import pandas as pd
 import numpy as np

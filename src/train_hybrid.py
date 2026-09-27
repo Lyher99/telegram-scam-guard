@@ -1,3 +1,19 @@
+"""
+Hybrid Text Classification Model Training Pipeline
+====================================================
+Training Flow:
+1. Load dataset (`data/raw/combined_spam_ham.csv`) containing English and Khmer messages.
+2. Feature Extraction:
+   - 10,000 TF-IDF unigram & bigram text features.
+   - 12 binary & statistical heuristic features (urgency, money bait, credential ask, punctuation).
+   - Sparse horizontal stack (hstack) of TF-IDF + keyword features.
+3. Model Training:
+   - Logistic Regression (max_iter=1000).
+   - Linear Support Vector Classifier (LinearSVC).
+4. Serialization:
+   - Saves combined artifact (vectorizer, lr, svm, metadata) to `data/processed/hybrid_model.pkl`.
+"""
+
 import os
 import sys
 import pickle

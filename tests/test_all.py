@@ -1,3 +1,16 @@
+"""
+End-to-End Test Suite
+=======================
+Tests all core modules and validation rules:
+1. Rule Baselines: safe, suspicious, dangerous heuristics.
+2. Feature Extraction: links, double extensions, Khmer language detection.
+3. ML Model Predictions: TF-IDF Logistic Regression & Linear SVM inference.
+4. Ensemble Predictions: Hybrid classification on realistic scam scenarios.
+5. Report Formatting: Bilingual Khmer + English outputs.
+6. Edge Cases: Empty strings, long text, special characters, safe URLs.
+7. Money Lure Detection: Send-small / get-big ratio triggers.
+"""
+
 import sys
 import os
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))

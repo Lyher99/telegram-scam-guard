@@ -1,3 +1,20 @@
+"""
+Telegram Scam Guard - Main Bot Entrypoint
+===========================================
+Flow & Responsibilities:
+1. Initialize Telegram Application (using python-telegram-bot).
+2. Dispatch Commands:
+   - /start : Shows usage instructions in Khmer and English.
+   - /check : Scans a replied-to message or document metadata.
+   - /hash  : Queries local MalwareBazaar database by SHA256.
+3. Message Handlers:
+   - handle_text : Detects scam messages, URL phishing, and social engineering.
+     * In group chats: Filters noise to only reply to high-risk threats, bot mentions, or commands.
+     * In private chats: Always returns risk score and analysis.
+   - handle_document : Inspects incoming files (double extensions, mime mismatch, zip contents)
+     WITHOUT downloading or executing unsafe binaries.
+"""
+
 import os
 import re
 import logging

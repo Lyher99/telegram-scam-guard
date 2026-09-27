@@ -1,3 +1,12 @@
+"""
+File Deep Inspection Module
+=============================
+Flow & Safety Mechanisms:
+1. Detects file format by inspecting first bytes (Magic Signatures: MZ, PK, ELF, %PDF, etc.).
+2. Identifies file extension spoofing (e.g. an .exe executable disguised with a .pdf extension).
+3. Detects dangerous executable types without executing or rendering untrusted file content.
+"""
+
 import os
 import hashlib
 import logging

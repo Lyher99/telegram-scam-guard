@@ -1,3 +1,20 @@
+"""
+Hybrid Text Prediction Engine
+===============================
+Flow & Scoring Logic:
+1. Heuristic Keyword Extraction:
+   - Evaluates urgency, money bait, credential/OTP requests, family emergency lures.
+   - Calculates a keyword score (0-100) based on weighted reasons.
+2. Machine Learning Inference:
+   - Uses TF-IDF vectorizer + Logistic Regression / Linear SVM trained on combined datasets.
+   - Computes probability score. ML confidence is factored in if >= 70%.
+3. Score Fusion:
+   - Final score = max(keyword_score, ml_score)
+   - Score >= 60%  --> Dangerous
+   - Score >= 25%  --> Suspicious
+   - Score <  25%  --> Safe
+"""
+
 import os
 import re
 import logging

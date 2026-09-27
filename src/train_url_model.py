@@ -1,3 +1,19 @@
+"""
+URL Phishing Detection Training Pipeline
+=========================================
+Training Flow:
+1. Load URL datasets from `data/raw/`:
+   - PhishTank, URLhaus, OpenPhish (malicious URL feeds).
+   - PhiUSIIL dataset (~235k legitimate & phishing URLs).
+2. Feature Extraction:
+   - Computes 28 lexical, statistical, and structural features per URL.
+3. Train & Calibrate Models:
+   - Logistic Regression with predict_proba.
+   - Calibrated Linear Support Vector Classifier (CalibratedClassifierCV).
+4. Serialization:
+   - Saves model dictionary to `data/processed/url_models.pkl`.
+"""
+
 import os
 import re
 import csv

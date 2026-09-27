@@ -1,3 +1,12 @@
+"""
+Malware Hash Lookup Module
+===========================
+Flow & Operation:
+1. Loads the local MalwareBazaar database cache (`data/raw/malwarebazaar.csv`).
+2. Validates 64-character SHA-256 hex string queries.
+3. Returns malware metadata (signature, tags, first-seen date, file type) if matched.
+"""
+
 import os
 import re
 import logging

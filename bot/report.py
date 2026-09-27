@@ -1,3 +1,12 @@
+"""
+Bilingual Report Formatter
+===========================
+Flow & Responsibilities:
+1. Translates internal detection categories and reasons into human-friendly explanations.
+2. Generates dual-language output (Khmer + English) formatted for Telegram Markdown.
+3. Provides contextual action recommendations (e.g., "Do not open this file", "Ask the sender via another channel").
+"""
+
 import re
 
 RISK_LABELS = {

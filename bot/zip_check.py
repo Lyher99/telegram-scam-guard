@@ -1,3 +1,12 @@
+"""
+ZIP Archive Inspection Module
+===============================
+Flow & Safety Mechanisms:
+1. Safely inspects the directory listing of in-memory ZIP archive bytes.
+2. Checks for dangerous nested files (.exe, .scr, .bat, .vbs, .js, etc.).
+3. Detects nested archives or double extension lures inside archives without extracting or running files.
+"""
+
 import os
 import io
 import zipfile

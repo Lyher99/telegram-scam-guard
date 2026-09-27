@@ -1,3 +1,14 @@
+"""
+URL Feature Extraction Module
+==============================
+Flow & Extracted Features:
+Extracts 28 lexical, statistical, and structural features from a URL string:
+1. Lexical properties: length, dot count, hyphens, @ symbol, underscores, slashes.
+2. Structural/Domain properties: subdomain count, suspicious TLD match, IP address host.
+3. Statistical properties: Shannon entropy of URL string and hostname.
+4. Semantic properties: Phishing keywords (login, verify, banking, crypto, etc.).
+"""
+
 import re
 import math
 from urllib.parse import urlparse

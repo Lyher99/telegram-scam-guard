@@ -1,3 +1,13 @@
+"""
+URL Phishing Predictor Module
+==============================
+Flow:
+1. Validates and parses the incoming URL.
+2. Checks against a whitelist of verified safe domains (e.g. google.com, github.com).
+3. If not whitelisted, extracts 28 features and passes them to Logistic Regression & SVM models.
+4. Returns ensemble classification (safe vs phishing) and probability score.
+"""
+
 import os
 import pickle
 import numpy as np

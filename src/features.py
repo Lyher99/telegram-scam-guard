@@ -1,3 +1,16 @@
+"""
+Feature Extraction & Keyword Dictionaries (Khmer + English)
+============================================================
+Flow & Logic:
+1. Keyword Dictionaries:
+   - Urgency patterns, money/lottery lures, credential & OTP theft.
+   - Payment scam patterns and family emergency social engineering.
+2. Heuristic Feature Extractor:
+   - Detects double extensions (e.g. .pdf.exe).
+   - Identifies executable types, archive lures, and suspicious links.
+   - Analyzes money return ratio promises (e.g., 'send $20, get $200').
+"""
+
 import re
 
 EXECUTABLE_EXTS = {"exe", "scr", "bat", "cmd", "msi", "js", "vbs", "jar", "apk", "lnk", "ps1", "hta", "pif", "dll", "reg", "sh"}
