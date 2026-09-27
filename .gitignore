@@ -1,11 +1,25 @@
-data/
+# Python
 __pycache__/
 *.pyc
-.env
-*.xlsx
+*.pyo
+*.pyd
 .venv/
 venv/
+env/
+.env
+
+# Raw Datasets & Large Data files
+data/raw/datasets/
+data/raw/sms_spam/
+data/raw/*.csv
+!data/raw/malwarebazaar.csv
+data/raw/*.tar*
+data/raw/*.zip
+data/raw/*.txt
+data/processed/*.csv
+
+# Logs & Temporary files
 *.log
-translate.log
 screenlog.*
 .DS_Store
+*.xlsx
