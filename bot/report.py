@@ -85,7 +85,6 @@ REASON_TRANSLATIONS = {
 
 def format_report(result):
     risk = result["risk_level"]
-    score = result["score"]
     reasons = result["reasons"]
 
     labels = RISK_LABELS[risk]
@@ -94,43 +93,32 @@ def format_report(result):
     translated_reasons = []
     for r in reasons:
         if r.startswith("ML model detected scam"):
-            m = re.search(r"(\d+)%", r)
-            conf = m.group(1) if m else "?"
-            translated_reasons.append(f"🤖 ម៉ូឌែល ML រកឃើញថាជាការក្លែងបន្លំ ({conf}%)")
+            translated_reasons.append("សារមានពាក្យសង្ស័យ / Suspicious wording")
         elif r in REASON_TRANSLATIONS:
-            translated_reasons.append(REASON_TRANSLATIONS[r]["km"])
+            english_reason = re.sub(r"^[^A-Za-z]+", "", REASON_TRANSLATIONS[r]["en"])
+            translated_reasons.append(
+                f"{REASON_TRANSLATIONS[r]['km']} / {english_reason}"
+            )
         else:
-            translated_reasons.append(f"• {r}")
+            translated_reasons.append("សារមានសញ្ញាគួរឱ្យសង្ស័យ / Message looks suspicious")
 
-    reason_text = "\n".join(translated_reasons) if translated_reasons else "• មិនរកឃើញហានិភ័យច្បាស់លាស់"
+    # Keep the reply brief and avoid repeating the same reason in different wording.
+    unique_reasons = list(dict.fromkeys(translated_reasons))[:2]
+    reason_text = "\n".join(f"• {reason}" for reason in unique_reasons)
 
     if risk == "safe":
-        header = f"{icon} **មានសុវត្ថិភាព (Safe)**"
-        advice = (
-            "✅ សារនេះមានលក្ខណៈធម្មតា។\n"
-            "ប៉ុន្តែសូមប្រុងប្រយ័ត្នជានិច្ចចំពោះតំណភ្ជាប់ និងឯកសារពីអ្នកដែលអ្នកមិនស្គាល់។"
-        )
+        header = f"{icon} **ហានិភ័យទាប / Safe**"
+        advice = "កុំចុចតំណភ្ជាប់ ឬបើកឯកសារដែលអ្នកមិនស្គាល់។ / Avoid unknown links and files."
     elif risk == "suspicious":
-        header = f"{icon} **គួរឱ្យសង្ស័យ (Suspicious) — {score}%**"
-        advice = (
-            "⚠️ សារនេះគួរឱ្យសង្ស័យ!\n"
-            "កុំចុចតំណភ្ជាប់ ឬបើកឯកសារ។\n"
-            "សូមផ្ទៀងផ្ទាត់ជាមួយអ្នកផ្ញើតាមប្រព័ន្ធផ្សេង។"
-        )
+        header = f"{icon} **គួរឱ្យសង្ស័យ / Suspicious**"
+        advice = "កុំចុចតំណ ឬផ្ញើលេខកូដ។ ផ្ទៀងផ្ទាត់ជាមួយអ្នកផ្ញើ។ / Don’t click or share codes. Verify with the sender."
     else:
-        header = f"{icon} **គ្រោះថ្នាក់ (Dangerous) — {score}%**"
-        advice = (
-            "🚫 សារនេះគ្រោះថ្នាក់!\n"
-            "កុំបើកឯកសារ ឬចុចតំណភ្ជាប់!\n"
-            "សូមសួរអ្នកផ្ញើតាមប្រព័ន្ធផ្សេង។"
-        )
+        header = f"{icon} **គ្រោះថ្នាក់ / Dangerous**"
+        advice = "កុំចុចតំណ ឬបើកឯកសារ។ ផ្ទៀងផ្ទាត់ជាមួយអ្នកផ្ញើ។ / Don’t click or open files. Verify with the sender."
 
-    report = f"""{header}
-
-📋 **មូលហេតុ / Reasons:**
-{reason_text}
-
-💡 **អនុសាសន៍:**
-{advice}"""
+    report = f"{header}"
+    if reason_text:
+        report += f"\n{reason_text}"
+    report += f"\n\n{advice}"
 
     return report

@@ -22,7 +22,7 @@ import pickle
 import numpy as np
 from scipy.sparse import hstack, csr_matrix
 from src.features import (
-    extract_features, analyze_message, money_lure, has_keyword,
+    extract_features, analyze_features, money_lure, has_keyword,
     URGENCY_EN, URGENCY_KM, MONEY_BAIT_EN, MONEY_BAIT_KM,
     CREDENTIAL_ASK, PAYMENT_SCAM_EN, FAMILY_SCAM_EN, FAMILY_SCAM_KM,
 )
@@ -124,7 +124,7 @@ def _extract_keyword_reasons(text):
 def predict_ensemble(text):
     features = extract_features(text)
     kw_reasons = _extract_keyword_reasons(text)
-    rule = analyze_message(text)
+    rule = analyze_features(features)
     model = _load_hybrid_model()
 
     ml_score = 0
@@ -135,7 +135,6 @@ def predict_ensemble(text):
         try:
             tfidf = model["tfidf"]
             lr = model["lr"]
-            svm = model["svm"]
 
             X_tfidf = tfidf.transform([text])
             kw_feats = np.array([_get_keyword_features(text)])
@@ -144,8 +143,6 @@ def predict_ensemble(text):
 
             lr_prob = float(lr.predict_proba(X_combined)[0][1])
             lr_pred = int(lr.predict(X_combined)[0])
-            svm_pred = int(svm.predict(X_combined)[0])
-
             ml_score = int(lr_prob * 100)
             ml_pred = "scam" if lr_pred == 1 else "safe"
             ml_confidence = int(lr_prob * 100)

@@ -249,6 +249,10 @@ def rule_baseline(features):
     return {"risk_level": risk_level, "score": score, "reasons": reasons}
 
 
-def analyze_message(text):
-    features = extract_features(text)
+def analyze_features(features):
+    """Score an already-extracted feature set without repeating text analysis."""
     return rule_baseline(features)
+
+
+def analyze_message(text):
+    return analyze_features(extract_features(text))

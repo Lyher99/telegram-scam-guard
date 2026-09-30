@@ -18,6 +18,7 @@ Flow & Responsibilities:
 import os
 import re
 import logging
+import asyncio
 
 from telegram import Update
 from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, filters, ContextTypes
@@ -37,6 +38,35 @@ GROUP_KM_KEYWORDS = [
     "វិនិយោគ", "ចំណេញ", "ធានា", "គណនី", "ធនាគារ", "ពាក្យសម្ងាត់", "កូដ",
     "ប្រាក់ខែ", "ការងារ", "វិក័យប័ត្រ", "OTP", "otp", "scam", "ក្លែងក្លាយ",
 ]
+
+GROUP_SUSPICIOUS_KEYWORDS = (
+    "password", "verify", "account", "suspend", "urgent", "claim",
+    "free", "won", "congrat", "credit card", "bank", "otp", "login",
+    "confirm", "update", "security", "alert", "warning", "send money",
+    "transfer", "crypto", "bitcoin", "wallet", "investment", "profit",
+    "deposit", "receive", "million", "prize", "lottery", "selected",
+    "inheritance", "winner", "bonus", "reward", "cash", "money",
+    "salary", "job offer", "work from home", "earn", "income",
+    "quick money", "easy money", "get rich", "financial freedom",
+    "final notice", "shut off", "disconnection", "unpaid", "overdue",
+    "suspended", "blocked", "closed", "unauthorized", "compromised",
+    "grandma", "grandpa", "accident", "trouble", "hospital",
+    "zelle", "venmo", "wire transfer", "send $", "pay now",
+    "fake", "scam", "phishing", "malware", "virus",
+    "recover", "hacked", "hack", "gift card", "qr code",
+    "six digits", "verification message", "follow my instructions",
+    "refundable", "investment opportunity", "guarantee",
+    "forward it", "forward", "atm pin", "card details", "card number",
+    "pin", "release fee", "delivery fee", "processing fee",
+    "verification fee", "small payment", "small fee",
+    "passport", "id card", "recruitment", "parcel", "delivery",
+    "confirm it", "scan this qr", "screenshot", "pay me first", "pay the seller",
+    "reported", "before midnight", "cancel it", "cancelled",
+    "recover your account", "recovery", "storage is full",
+    "access their account", "cannot access", "friend asked",
+    ".code", "send code", "send the code",
+    "ផ្ញើលុយ", "ផ្ញើប្រាក់", "គណនី", "ធនាគារ", "ពាក្យសម្ងាត់",
+)
 
 
 async def safe_reply(message, text, **kwargs):
@@ -86,36 +116,7 @@ def should_respond(update: Update) -> bool:
         return True
 
     if msg.text:
-        suspicious_keywords = [
-            "password", "verify", "account", "suspend", "urgent", "claim",
-            "free", "won", "congrat", "credit card", "bank", "otp", "login",
-            "confirm", "update", "security", "alert", "warning", "send money",
-            "transfer", "crypto", "bitcoin", "wallet", "investment", "profit",
-            "deposit", "receive", "million", "prize", "lottery", "selected",
-            "inheritance", "winner", "bonus", "reward", "cash", "money",
-            "salary", "job offer", "work from home", "earn", "income",
-            "quick money", "easy money", "get rich", "financial freedom",
-            "final notice", "shut off", "disconnection", "unpaid", "overdue",
-            "suspended", "blocked", "closed", "unauthorized", "compromised",
-            "grandma", "grandpa", "accident", "trouble", "hospital",
-            "zelle", "venmo", "wire transfer", "send $", "pay now",
-            "fake", "scam", "phishing", "malware", "virus",
-            "recover", "hacked", "hack", "gift card", "qr code",
-            "six digits", "verification message", "follow my instructions",
-            "deposit", "refundable", "investment opportunity", "guarantee",
-            "forward it", "forward", "atm pin", "card details", "card number",
-            "pin", "release fee", "delivery fee", "processing fee",
-            "verification fee", "small payment", "small fee",
-            "passport", "id card", "recruitment", "parcel", "delivery",
-            "forward it", "forward", "confirm it",
-            "scan this qr", "screenshot", "pay me first", "pay the seller",
-            "reported", "before midnight", "cancel it", "cancelled",
-            "recover your account", "recovery", "storage is full",
-            "access their account", "cannot access", "friend asked",
-            ".code", "send code", "send the code",
-            "ផ្ញើលុយ", "ផ្ញើប្រាក់", "គណនី", "ធនាគារ", "ពាក្យសម្ងាត់",
-        ]
-        if has_keyword(msg.text, suspicious_keywords):
+        if has_keyword(msg.text, GROUP_SUSPICIOUS_KEYWORDS):
             return True
 
         if money_lure(msg.text):
@@ -221,7 +222,7 @@ async def cmd_check(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("No text or file to scan.")
         return
 
-    result = predict_ensemble(text)
+    result = await asyncio.to_thread(predict_ensemble, text)
     report = format_report(result)
     await update.message.reply_text(report)
 
@@ -254,7 +255,7 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         url_dangerous = False
         for url in urls[:3]:
-            url_result = predict_url(url)
+            url_result = await asyncio.to_thread(predict_url, url)
 
             if url_result.get("ensemble") == 1:
                 prob = url_result.get("avg_prob", 0) * 100
@@ -265,7 +266,7 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 await safe_reply(update.message, report, parse_mode="Markdown")
                 url_dangerous = True
 
-        text_result = predict_ensemble(clean_text)
+        text_result = await asyncio.to_thread(predict_ensemble, clean_text)
         logger.info(f"URL scan risk={text_result['risk_level']} score={text_result['score']} urls={len(urls)}")
         if text_result["risk_level"] != "safe" and should_reply_scanned(update, text_result):
             report = format_report(text_result)
@@ -278,11 +279,9 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
             )
         return
 
-    result = predict_ensemble(clean_text)
-    ml = result.get("ml_predictions", {})
+    result = await asyncio.to_thread(predict_ensemble, clean_text)
     logger.info(
-        f"Text scan risk={result['risk_level']} score={result['score']} "
-        f"kw={ml.get('keyword_score')} ml={ml.get('ml_score')} text={clean_text[:80]!r}"
+        f"Text scan risk={result['risk_level']} score={result['score']} text={clean_text[:80]!r}"
     )
 
     if is_group(update) and not should_reply_scanned(update, result):
@@ -291,13 +290,7 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     report = format_report(result)
 
-    ml_info = "\n\n🤖 **ការវិភាគ ML:**\n"
-    ml_info += f"• Rule score: {ml.get('rule_score', '-')}%\n"
-    ml_info += f"• Keyword score: {ml.get('keyword_score', '-')}%\n"
-    ml_info += f"• ML score: {ml.get('ml_score', '-')}%\n"
-    ml_info += f"• Prediction: {ml.get('ml_prediction', '-')}"
-
-    await safe_reply(update.message, report + ml_info, parse_mode="Markdown")
+    await safe_reply(update.message, report)
 
 
 async def handle_document(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -344,7 +337,9 @@ async def handle_document(update: Update, context: ContextTypes.DEFAULT_TYPE):
             except Exception as e:
                 logger.error(f"Deep check error: {e}")
 
-        result = predict_ensemble(f"{file_name} (size: {file_size_kb}KB, type: {mime})")
+        result = await asyncio.to_thread(
+            predict_ensemble, f"{file_name} (size: {file_size_kb}KB, type: {mime})"
+        )
         report = format_report(result)
         report += f"\n🔗 ពិនិត្យបន្ថែម: https://www.virustotal.com"
         await update.message.reply_text(report)
@@ -379,18 +374,21 @@ async def handle_document(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
                 await waiting_msg.delete()
                 return
-                return
 
             except Exception as e:
                 logger.error(f"ZIP check error: {e}")
 
-        result = predict_ensemble(f"{file_name} (size: {file_size_kb}KB, type: {mime})")
+        result = await asyncio.to_thread(
+            predict_ensemble, f"{file_name} (size: {file_size_kb}KB, type: {mime})"
+        )
         report = format_report(result)
         report += f"\n🔗 ពិនិត្យបន្ថែម: https://www.virustotal.com"
         await update.message.reply_text(report)
         return
 
-    result = predict_ensemble(f"{file_name} (size: {file_size_kb}KB, type: {mime})")
+    result = await asyncio.to_thread(
+        predict_ensemble, f"{file_name} (size: {file_size_kb}KB, type: {mime})"
+    )
     report = format_report(result)
     report += f"\n🔗 ពិនិត្យបន្ថែម: https://www.virustotal.com"
     await update.message.reply_text(report)
@@ -413,7 +411,6 @@ def main():
 
     app = ApplicationBuilder().token(token).build()
 
-    import asyncio
     async def post_init(application):
         global BOT_USERNAME
         me = await application.bot.get_me()
